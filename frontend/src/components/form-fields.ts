@@ -104,7 +104,10 @@ function createTextInput(config: FormFieldConfig): HTMLElement {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'form-field-input';
-  input.value = String(config.field.value || '');
+  input.setAttribute('data-field-id', config.field.id);
+  const value = String(config.field.value || '');
+  input.value = value;
+  console.log(`createTextInput: fieldId=${config.field.id}, value="${value}"`);
   input.disabled = config.isLocked;
   input.addEventListener('focus', config.onFocus);
   input.addEventListener('blur', config.onBlur);
@@ -115,6 +118,7 @@ function createTextInput(config: FormFieldConfig): HTMLElement {
 function createTextAreaInput(config: FormFieldConfig): HTMLElement {
   const textarea = document.createElement('textarea');
   textarea.className = 'form-field-input';
+  textarea.setAttribute('data-field-id', config.field.id);
   textarea.value = String(config.field.value || '');
   textarea.rows = 4;
   textarea.disabled = config.isLocked;
@@ -128,6 +132,7 @@ function createNumberInput(config: FormFieldConfig): HTMLElement {
   const input = document.createElement('input');
   input.type = 'number';
   input.className = 'form-field-input';
+  input.setAttribute('data-field-id', config.field.id);
   input.value = String(config.field.value || '');
   input.disabled = config.isLocked;
   input.addEventListener('focus', config.onFocus);
@@ -140,7 +145,10 @@ function createDateTimeInput(config: FormFieldConfig): HTMLElement {
   const input = document.createElement('input');
   input.type = 'datetime-local';
   input.className = 'form-field-input';
-  input.value = String(config.field.value || '');
+  input.setAttribute('data-field-id', config.field.id);
+  const value = String(config.field.value || '');
+  input.value = value;
+  console.log(`createDateTimeInput: fieldId=${config.field.id}, value="${value}"`);
   input.disabled = config.isLocked;
   input.addEventListener('focus', config.onFocus);
   input.addEventListener('blur', config.onBlur);
@@ -157,6 +165,7 @@ function createCheckboxInput(config: FormFieldConfig): HTMLElement {
   const input = document.createElement('input');
   input.type = 'checkbox';
   input.className = 'form-field-input';
+  input.setAttribute('data-field-id', config.field.id);
   input.checked = config.field.value === true || config.field.value === 'true';
   input.disabled = config.isLocked;
   input.addEventListener('focus', config.onFocus);
@@ -177,6 +186,7 @@ function createCheckboxInput(config: FormFieldConfig): HTMLElement {
 function createDropdownInput(config: FormFieldConfig): HTMLElement {
   const select = document.createElement('select');
   select.className = 'form-field-input';
+  select.setAttribute('data-field-id', config.field.id);
   select.disabled = config.isLocked;
 
   const options = ['', 'High', 'Medium', 'Low', 'Critical'];
@@ -204,6 +214,7 @@ function createSliderInput(config: FormFieldConfig): HTMLElement {
   const input = document.createElement('input');
   input.type = 'range';
   input.className = 'form-field-input';
+  input.setAttribute('data-field-id', config.field.id);
   input.style.flex = '1';
   input.min = '0';
   input.max = '100';
@@ -243,6 +254,7 @@ function createRadioInput(config: FormFieldConfig): HTMLElement {
     const radio = document.createElement('input');
     radio.type = 'radio';
     radio.name = `radio-${config.field.id}`;
+    radio.setAttribute('data-field-id', config.field.id);
     radio.value = opt;
     radio.disabled = config.isLocked;
     radio.checked = config.field.value === opt;

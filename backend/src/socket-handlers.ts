@@ -167,6 +167,8 @@ export function initializeSocketHandlers(io: SocketIOServer, appState: AppState)
       if (!currentUser) return;
 
       try {
+        console.log('commit-field received from', currentUser.username, ':', data);
+
         // Save to database
         await updateFieldValue(data.fieldId, String(data.value), currentUser.userId);
 
@@ -179,6 +181,7 @@ export function initializeSocketHandlers(io: SocketIOServer, appState: AppState)
         }
 
         // Broadcast update to all clients
+        console.log('Broadcasting field-updated to all clients');
         io.emit('field-updated', {
           caseId: data.caseId,
           fieldId: data.fieldId,

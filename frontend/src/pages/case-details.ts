@@ -75,7 +75,7 @@ export function createCaseDetailsPage(caseId: string, onBack: () => void): HTMLE
   // Setup event listeners
   const user = getState().currentUser;
   if (user) {
-    emitCaseOpen({ caseId });
+    emitCaseOpen(caseId);
   }
 
   // Handle socket events
@@ -232,6 +232,8 @@ function setupSocketListeners(caseId: string) {
   const user = state.currentUser;
   if (!user) return;
 
+  console.log('setupSocketListeners called for caseId:', caseId, 'currentUser:', user);
+
   // Handle state sync
   const handleStateSync = (data: any) => {
     if (data.caseId === caseId) {
@@ -256,16 +258,26 @@ function setupSocketListeners(caseId: string) {
 
   // Handle field lock events
   const handleFieldLocked = (data: any) => {
+    console.log('handleFieldLocked called:', data, 'comparing caseId:', data.caseId, 'vs', caseId);
     if (data.caseId === caseId) {
       setFieldLocked(data.fieldId, { userId: data.userId, username: data.username });
-      rerenderFields();
+      // Only rerender if another user locked the field
+      // Skip rerender for current user's lock to preserve focus
+      if (data.userId !== user.id) {
+        console.log('Rerendering due to another user locking');
+        rerenderFields();
+      }
     }
   };
 
   const handleFieldUnlocked = (data: any) => {
+    console.log('handleFieldUnlocked called:', data, 'comparing caseId:', data.caseId, 'vs', caseId);
     if (data.caseId === caseId) {
       setFieldUnlocked(data.fieldId);
-      rerenderFields();
+      console.log('Field unlocked, rerendering and preserving current DOM values');
+      // Preserve DOM values: for current user, DOM has the correct value;
+      // for other users, field-updated has already updated the state
+      rerenderFields(true);
     }
   };
 
@@ -277,7 +289,11 @@ function setupSocketListeners(caseId: string) {
         username: data.username,
         focusedFieldId: data.fieldId,
       });
-      rerenderFields();
+      // Only rerender if another user focused a field
+      // Skip rerender for current user's focus to preserve field interaction
+      if (data.userId !== user.id) {
+        rerenderFields();
+      }
     }
   };
 
@@ -294,28 +310,42 @@ function setupSocketListeners(caseId: string) {
 
   // Handle field updates from other users
   const handleFieldUpdated = (data: any) => {
+    console.log('field-updated event received:', data);
+    console.log('Current caseId:', caseId, 'event caseId:', data.caseId, 'current user:', user.id, 'event userId:', data.userId);
+
     if (data.caseId === caseId && data.userId !== user.id) {
+      console.log('✓ Processing field update from another user');
       const caseData = getState().currentCase;
+      console.log('Current case data:', caseData);
+
       if (caseData) {
         const field = caseData.fields.find((f: CaseField) => f.id === data.fieldId);
+        console.log('Found field:', field?.fieldName, 'with id:', data.fieldId);
+
         if (field) {
+          console.log('Updating field value:', field.fieldName, 'from', field.value, 'to', data.value);
           field.value = data.value;
-          // Update the input element
-          const input = document.querySelector(`[data-field-id="${data.fieldId}"]`) as any;
-          if (input) {
-            input.value = data.value;
-          }
+          console.log('Field value after update:', field.value);
         }
       }
+      // Rerender without preserving values to show the updated field from another user
+      console.log('Calling rerenderFields(false) to show updated value');
+      rerenderFields(false);
+    } else {
+      console.log('✗ Skipping field update');
+      if (data.caseId !== caseId) console.log('  Reason: Case ID mismatch:', data.caseId, '!==', caseId);
+      if (data.userId === user.id) console.log('  Reason: Same user:', data.userId, '===', user.id);
     }
   };
 
+  console.log('Registering socket event listeners');
   onStateSync(handleStateSync);
   onFieldLocked(handleFieldLocked);
   onFieldUnlocked(handleFieldUnlocked);
   onUserFocus(handleUserFocus);
   onUserBlur(handleUserBlur);
   onFieldUpdated(handleFieldUpdated);
+  console.log('Socket event listeners registered');
 }
 
 function updateActiveUsers(otherUsers: string[], currentUser: string) {
@@ -343,7 +373,7 @@ function updateActiveUsers(otherUsers: string[], currentUser: string) {
   });
 }
 
-function rerenderFields() {
+function rerenderFields(preserveValues = true) {
   // Get form fields container
   const formFieldsContainer = document.querySelector('#form-fields') as HTMLElement;
   const caseInfo = document.querySelector('#case-info') as HTMLElement;
@@ -356,6 +386,17 @@ function rerenderFields() {
 
   if (!caseData || !user) return;
 
+  // Preserve current input values before rerendering (unless disabled)
+  const currentValues = new Map<string, string>();
+  if (preserveValues) {
+    caseData.fields.forEach((field: CaseField) => {
+      const input = document.querySelector(`input[data-field-id="${field.id}"], textarea[data-field-id="${field.id}"], select[data-field-id="${field.id}"]`) as any;
+      if (input) {
+        currentValues.set(field.id, input.value);
+      }
+    });
+  }
+
   // Re-render all fields
   const newFieldsContainer = document.createElement('div');
   newFieldsContainer.className = 'form-fields';
@@ -365,8 +406,14 @@ function rerenderFields() {
     const lock = state.fieldLocks.get(field.id);
     const presenceUsers = Array.from(state.userPresence.values()).filter((p) => p.focusedFieldId === field.id && p.userId !== user.id);
 
+    // Use current value if being edited, otherwise use server value
+    const fieldToRender = { ...field };
+    if (currentValues.has(field.id)) {
+      fieldToRender.value = currentValues.get(field.id);
+    }
+
     const fieldComponent = createFormField({
-      field,
+      field: fieldToRender,
       isLocked: !!lock && lock.userId !== user.id,
       lockedByUsername: lock?.username,
       presenceUsers,
