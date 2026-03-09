@@ -1,0 +1,14 @@
+{
+  "name": "collab-gui-poc",
+  "version": "1.0.0",
+  "description": "Real-time collaborative GUI POC",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces"
+  }
+}
