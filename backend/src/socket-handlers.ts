@@ -3,7 +3,7 @@ import { AppState, FieldLock } from './types';
 import { updateFieldValue, getCaseWithFields } from './database';
 import { addActiveEditor, removeActiveEditor, getActiveEditors } from './routes/cases';
 
-const LOCK_TIMEOUT = 5000; // 5 seconds
+const LOCK_TIMEOUT = 7000; // 7 seconds - must be longer than debounce (500ms) + save delay (5000ms)
 const FIELD_LOCK_KEY = (caseId: string, fieldId: string) => `${caseId}:${fieldId}`;
 
 export function initializeSocketHandlers(io: SocketIOServer, appState: AppState) {
@@ -15,9 +15,12 @@ export function initializeSocketHandlers(io: SocketIOServer, appState: AppState)
 
     // User connects to the app
     socket.on('user-connect', async (data: { userId: string; username: string; caseId?: string }) => {
+      console.log('🔌 user-connect received:', data);
       currentUser = { userId: data.userId, username: data.username };
+      console.log('✓ currentUser set to:', currentUser.username);
       if (data.caseId) {
         currentCaseId = data.caseId;
+        console.log('✓ currentCaseId set to:', data.caseId);
         addActiveEditor(data.caseId, data.username);
 
         // Notify others
@@ -39,7 +42,9 @@ export function initializeSocketHandlers(io: SocketIOServer, appState: AppState)
 
     // User navigates to a case
     socket.on('case-open', async (data: { caseId: string }) => {
+      console.log('📂 case-open received:', data);
       if (currentUser) {
+        console.log('✓ case-open from user:', currentUser.username);
         // Remove from previous case
         if (currentCaseId) {
           removeActiveEditor(currentCaseId, currentUser.username);
@@ -65,6 +70,7 @@ export function initializeSocketHandlers(io: SocketIOServer, appState: AppState)
 
     // User focuses on a field
     socket.on('focus-field', (data: { caseId: string; fieldId: string }) => {
+      console.log('👁️ focus-field received:', data, 'from user:', currentUser?.username || 'UNKNOWN');
       if (currentUser) {
         appState.userPresence.set(currentUser.userId, {
           userId: currentUser.userId,
@@ -99,7 +105,11 @@ export function initializeSocketHandlers(io: SocketIOServer, appState: AppState)
 
     // User requests lock on field
     socket.on('request-lock', async (data: { caseId: string; fieldId: string }) => {
-      if (!currentUser) return;
+      console.log('🔒 request-lock received:', data, 'from user:', currentUser?.username || 'UNKNOWN');
+      if (!currentUser) {
+        console.log('⚠️ request-lock: currentUser is null, returning');
+        return;
+      }
 
       const lockKey = FIELD_LOCK_KEY(data.caseId, data.fieldId);
       const existingLock = appState.fieldLocks.get(lockKey);
@@ -164,13 +174,19 @@ export function initializeSocketHandlers(io: SocketIOServer, appState: AppState)
 
     // User commits field value
     socket.on('commit-field', async (data: { caseId: string; fieldId: string; value: any }) => {
-      if (!currentUser) return;
+      console.log('commit-field event received, currentUser:', currentUser ? currentUser.username : 'null');
+      if (!currentUser) {
+        console.log('WARNING: currentUser is null, returning early');
+        return;
+      }
 
       try {
-        console.log('commit-field received from', currentUser.username, ':', data);
+        console.log('commit-field received from', currentUser.username, 'with data:', data);
 
         // Save to database
-        await updateFieldValue(data.fieldId, String(data.value), currentUser.userId);
+        console.log('About to save field value to database...');
+        const result = await updateFieldValue(data.fieldId, String(data.value), currentUser.userId);
+        console.log('updateFieldValue result:', result);
 
         // Release lock
         const lockKey = FIELD_LOCK_KEY(data.caseId, data.fieldId);
@@ -190,6 +206,7 @@ export function initializeSocketHandlers(io: SocketIOServer, appState: AppState)
         });
 
         // Broadcast unlock
+        console.log('Broadcasting field-unlocked');
         io.emit('field-unlocked', {
           caseId: data.caseId,
           fieldId: data.fieldId,

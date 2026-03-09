@@ -163,20 +163,17 @@ function renderCaseDetails(container: HTMLElement, caseData: any) {
       },
       onBlur: () => {
         emitBlurField(caseData.id, field.id);
-        // Cancel pending debounce/save when user leaves field
+        // CRITICAL: Do NOT cancel the save timer on blur!
+        // The save timer must fire to persist the value to the database
+        // Only cancel the debounce timer since the user is no longer typing
         const fieldKey = `${caseData.id}:${field.id}`;
         const timers = fieldTimers.get(fieldKey);
         if (timers?.debounceTimer) {
+          console.log('Clearing debounce timer on blur, but keeping save timer alive');
           clearTimeout(timers.debounceTimer);
           timers.debounceTimer = undefined;
         }
-        if (timers?.saveTimer) {
-          clearTimeout(timers.saveTimer);
-          timers.saveTimer = undefined;
-        }
-        if (!timers?.debounceTimer && !timers?.saveTimer) {
-          fieldTimers.delete(fieldKey);
-        }
+        // Keep saveTimer running! It needs to fire to save to database
       },
       onChange: (value) => {
         handleFieldChange(caseData.id, field.id, value);
@@ -191,23 +188,32 @@ function renderCaseDetails(container: HTMLElement, caseData: any) {
 }
 
 function handleFieldChange(caseId: string, fieldId: string, value: any) {
+  console.log('handleFieldChange called:', { caseId, fieldId, value });
   const fieldKey = `${caseId}:${fieldId}`;
   const timers = fieldTimers.get(fieldKey) || {};
 
+  // CRITICAL: Renew the lock on every keystroke to prevent lock timeout while typing
+  emitRequestLock(caseId, fieldId);
+  console.log('Renewed lock request to prevent timeout');
+
   // Clear previous debounce timer if it exists
   if (timers.debounceTimer) {
+    console.log('Clearing previous debounce timer');
     clearTimeout(timers.debounceTimer);
   }
 
   // Set new debounce timer
   const debounceTimer = setTimeout(() => {
+    console.log('Debounce timer expired, starting 5s save timer for:', { fieldId, value });
     // Clear any previous save timer
     if (timers.saveTimer) {
+      console.log('Clearing previous save timer');
       clearTimeout(timers.saveTimer);
     }
 
     // Auto-save after debounce + delay
     const saveTimer = setTimeout(() => {
+      console.log('Save timer expired, calling emitCommitField with value:', value);
       emitCommitField(caseId, fieldId, value);
       // Clear the save timer from tracking
       const currentTimers = fieldTimers.get(fieldKey);
@@ -274,9 +280,10 @@ function setupSocketListeners(caseId: string) {
     console.log('handleFieldUnlocked called:', data, 'comparing caseId:', data.caseId, 'vs', caseId);
     if (data.caseId === caseId) {
       setFieldUnlocked(data.fieldId);
-      console.log('Field unlocked, rerendering and preserving current DOM values');
-      // Preserve DOM values: for current user, DOM has the correct value;
-      // for other users, field-updated has already updated the state
+      console.log('Field unlocked - rerendering with smart value preservation');
+      // Rerender with smart preservation:
+      // - If DOM ≠ State: preserve DOM (current user is editing)
+      // - If DOM == State: use State (remote update already applied)
       rerenderFields(true);
     }
   };
@@ -386,16 +393,27 @@ function rerenderFields(preserveValues = true) {
 
   if (!caseData || !user) return;
 
-  // Preserve current input values before rerendering (unless disabled)
+  // Smart value preservation strategy:
+  // - For each field, compare DOM value with state value
+  // - If different: preserve DOM (user is editing this field)
+  // - If same: use state (remote update from another user)
   const currentValues = new Map<string, string>();
-  if (preserveValues) {
-    caseData.fields.forEach((field: CaseField) => {
-      const input = document.querySelector(`input[data-field-id="${field.id}"], textarea[data-field-id="${field.id}"], select[data-field-id="${field.id}"]`) as any;
-      if (input) {
-        currentValues.set(field.id, input.value);
+  caseData.fields.forEach((field: CaseField) => {
+    const input = document.querySelector(`input[data-field-id="${field.id}"], textarea[data-field-id="${field.id}"], select[data-field-id="${field.id}"]`) as any;
+    if (input) {
+      const domValue = input.value;
+      const stateValue = String(field.value || '');
+
+      // If DOM value differs from state value, the user is editing → preserve DOM value
+      if (domValue !== stateValue && preserveValues) {
+        console.log(`Field ${field.id}: DOM="${domValue}" differs from state="${stateValue}" - preserving DOM`);
+        currentValues.set(field.id, domValue);
+      } else if (domValue === stateValue && preserveValues) {
+        console.log(`Field ${field.id}: DOM="${domValue}" matches state - using state`);
+        // Don't set currentValues, will use state value
       }
-    });
-  }
+    }
+  });
 
   // Re-render all fields
   const newFieldsContainer = document.createElement('div');
@@ -423,20 +441,17 @@ function rerenderFields(preserveValues = true) {
       },
       onBlur: () => {
         emitBlurField(caseData.id, field.id);
-        // Cancel pending debounce/save when user leaves field
+        // CRITICAL: Do NOT cancel the save timer on blur!
+        // The save timer must fire to persist the value to the database
+        // Only cancel the debounce timer since the user is no longer typing
         const fieldKey = `${caseData.id}:${field.id}`;
         const timers = fieldTimers.get(fieldKey);
         if (timers?.debounceTimer) {
+          console.log('Clearing debounce timer on blur, but keeping save timer alive');
           clearTimeout(timers.debounceTimer);
           timers.debounceTimer = undefined;
         }
-        if (timers?.saveTimer) {
-          clearTimeout(timers.saveTimer);
-          timers.saveTimer = undefined;
-        }
-        if (!timers?.debounceTimer && !timers?.saveTimer) {
-          fieldTimers.delete(fieldKey);
-        }
+        // Keep saveTimer running! It needs to fire to save to database
       },
       onChange: (value) => {
         handleFieldChange(caseData.id, field.id, value);

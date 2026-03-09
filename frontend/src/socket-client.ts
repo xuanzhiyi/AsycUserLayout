@@ -83,7 +83,11 @@ export function emitReleaseLock(caseId: string, fieldId: string) {
 }
 
 export function emitCommitField(caseId: string, fieldId: string, value: any) {
-  getSocket().emit('commit-field', { caseId, fieldId, value });
+  console.log('emitCommitField called:', { caseId, fieldId, value });
+  const socket = getSocket();
+  console.log('Socket connected?', socket.connected);
+  socket.emit('commit-field', { caseId, fieldId, value });
+  console.log('commit-field event emitted');
 }
 
 // Event listeners
